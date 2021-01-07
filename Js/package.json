@@ -1,0 +1,16 @@
+{
+  "name": "js",
+  "version": "1.0.0",
+  "scripts": {
+    "debug-build": "node pack/pack.js -nonode",
+    "pack": "node pack/pack.js",
+    "build": "node pack/pack.js -build",
+    "tsbuild": "tsc -p tsconfig.json",
+    "npm-p": "npm install --production"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "shelljs": "^0.8.4",
+    "typescript": "^4.1.3"
+  }
+}

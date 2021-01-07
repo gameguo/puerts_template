@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "jsx": "react",
+    "sourceMap": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": false,
+    "typeRoots": [
+      "../Assets/Js/Puerts/Puerts/Typing",
+      "../Assets/Js/Puerts/Gen/Typing",
+      "./node_modules/@types"
+    ],
+    "outDir": "build",
+    "allowJs": true
+  },
+  "exclude": [
+    "pack",
+    "build",
+    "node_modules"
+  ]
+}

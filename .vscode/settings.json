@@ -1,0 +1,32 @@
+{
+    "search.exclude": {
+        "**/*.csproj": true,
+        "**/*.meta": true,
+        "**/*.sln": true,
+        "**/Library": true,
+        "**/Logs": true,
+        "**/obj": true,
+        "**/ReleasePkg": true,
+        "**/Temp": true,
+        "**/.history":true,
+        ".cache": true,
+    },
+    "files.exclude": {
+        "**/*.csproj": true,
+        "**/*.meta": true,
+        "**/*.sln": true,
+        "**/IFixToolKit": true,
+        "**/Library": true,
+        "**/Logs": true,
+        "**/obj": true,
+        "**/ReleasePkg": true,
+        "**/Temp": true,
+        "**/.idea": true,
+        "**/.vs": true,
+        "**/.history": true,
+        ".cache": true
+    },
+    "files.watcherExclude": {
+        "**/target": true
+    },
+}
