@@ -174,6 +174,56 @@ namespace Puerts
             return serialName;
         }
 
+
+        private static string InjectMethod(ModuleDefinition module, MethodDefinition method)
+        {
+            //if (method.IsConstructor || method.IsGetter || method.IsSetter || !method.IsPublic)
+            //    continue;
+
+
+            //// 定义稍后会用的类型
+            //var objType = module.ImportReference(typeof(System.Object));
+            //var intType = module.ImportReference(typeof(System.Int32));
+            //var logFormatMethod =
+            //    module.ImportReference(typeof(Debug).GetMethod("LogFormat", new[] { typeof(string), typeof(object[]) }));
+
+            //// 开始注入IL代码
+            //var insertPoint = method.Body.Instructions[0];
+            //var ilProcessor = method.Body.GetILProcessor();
+            //// 设置一些标签用于语句跳转
+            //var label1 = ilProcessor.Create(OpCodes.Ldarg_1);
+            //var label2 = ilProcessor.Create(OpCodes.Stloc_0);
+            //var label3 = ilProcessor.Create(OpCodes.Ldloc_0);
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Nop));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldstr, "a = {0}, b = {1}"));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_2));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Newarr, objType));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Dup));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_0));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Box, intType));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Stelem_Ref));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Dup));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_1));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_1));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Box, intType));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Stelem_Ref));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Call, logFormatMethod));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_1));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ble, label1));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Br, label2));
+            //ilProcessor.InsertBefore(insertPoint, label1);
+            //ilProcessor.InsertBefore(insertPoint, label2);
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Br, label3));
+            //ilProcessor.InsertBefore(insertPoint, label3);
+            //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ret));
+
+
+            return "";
+        }
+
         public static void Run()
         {
             // 读取 Assembly-CSharp 程序集
@@ -201,36 +251,22 @@ namespace Puerts
                     continue;
                 }
                 var sb = $"{type.FullName}\n";
-                var hotfixRegs = new HashSet<string>();
                 foreach (var method in type.Methods)
                 {
-                    var hotfixFieldName_r = GetHotfixFieldName_r(method, hotfixRegs);
-                    var signatureLit = GetMethodString(method);
-
-                    var point = FindPatchPoint(method.Body);
-                    if (point == null)
+                    var result = InjectMethod(a.MainModule, method);
+                    if (!string.IsNullOrEmpty(result))
                     {
-                        Debug.LogWarningFormat("no patch point in {0}", signatureLit);
-                        continue;
+                        modified = true;
+                        sb += result;
                     }
-
-                    modified = true;
-                    var argCount = method.IsStatic ? method.Parameters.Count : method.Parameters.Count + 1;
-                    var proc = method.Body.GetILProcessor();
-                    var boolVar = new VariableDefinition(a.MainModule.TypeSystem.Boolean);
-                    method.Body.Variables.Add(boolVar);
-
-                    sb += hotfixFieldName_r + " > " + signatureLit;
-                    sb += "\n";
                 }
                 Debug.LogFormat("{0}", sb);
             }
 
             if (modified)
             {
-                a.MainModule.Types.Add(new TypeDefinition("Puerts", TypeNameForInjectFlag, Mono.Cecil.TypeAttributes.Class, a.MainModule.TypeSystem.Object));
+                a.MainModule.Types.Add(new TypeDefinition("Puerts", TypeNameForInjectFlag, TypeAttributes.Class, a.MainModule.TypeSystem.Object));
                 a.Write(assemblyFilePath);
-                // a.Write("temp.dll");
                 Debug.LogFormat("write: {0}", assemblyFilePath);
             }
             else
