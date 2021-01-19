@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [Configure]
-public class PuertsConfig
+public class PuertsCfg
 {
     [CodeOutputDirectory] // Bind代码生成目录
     public static string OutputGenDirectory { get { return Application.dataPath + "/Js/Puerts/Gen/"; } }

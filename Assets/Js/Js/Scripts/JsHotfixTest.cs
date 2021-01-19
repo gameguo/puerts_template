@@ -1,13 +1,22 @@
 ﻿using UnityEngine;
 
-public class JsHotfixTest : MonoBehaviour
+namespace PuertsTest
 {
-    private void Start()
+    public class JsHotfixTest : MonoBehaviour
     {
-        HotfixTest();
-    }
-    private void HotfixTest()
-    {
-        Debug.Log("C#的方法");
-    }
+        private void Start()
+        {
+            HotfixTest();
+            NoHotfixTest();
+        }
+
+        private void HotfixTest()
+        {
+            Debug.Log("C#的方法 :: HotfixTest");
+        }
+        private void NoHotfixTest()
+        {
+            Debug.Log("C#的方法 :: NoHotfixTest");
+        }
+    } 
 }
