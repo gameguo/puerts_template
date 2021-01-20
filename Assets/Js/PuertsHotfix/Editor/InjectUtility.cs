@@ -1,4 +1,5 @@
 ﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,6 +18,8 @@ namespace Puerts
             {
                 assembly = AssemblyDefinition.ReadAssembly(assmeblyPath,
                     new ReaderParameters { ReadSymbols = true, ReadWrite = true });
+
+                CreateTempFile(assmeblyPath);
 
                 if (IsDirty(assembly))
                 {
@@ -53,219 +56,100 @@ namespace Puerts
         {
             var module = assembly.MainModule;
 
-            UnityEngine.Debug.Log(injectList.Count);
-
             foreach (var type in module.Types)
             {
-                var sb = $"{type.FullName}\n";
+                var methodStrs = "";
                 foreach (var method in type.Methods)
                 {
                     if (!IsHotfix(method, injectList)) continue;
 
-                    var result = InjectMethod(module, method);
+                    var result = DoInjectMethod(assembly, method, type);
                     if (!string.IsNullOrEmpty(result))
                     {
-                        sb += result + "\n";
+                        methodStrs += result + "\n";
                     }
                 }
-                UnityEngine.Debug.LogFormat("{0}", sb);
-            }
-        }
-
-        private static string InjectMethod(ModuleDefinition module, MethodDefinition mothod)
-        {
-
-            return "";
-        }
-
-        private static bool IsHotfix(MethodDefinition method, List<MethodInfo> injectList)
-        {
-            var methodClassType = method.DeclaringType.FullName;
-            var methodName = method.Name;
-            var methodReturnType = method.ReturnType.FullName;
-            int methodParameterCount = method.HasParameters ? method.Parameters.Count : 0;
-            var parames = new List<MethodParameterStr>();
-
-            foreach (var parameter in method.Parameters)
-            {
-                //parameter.IsReturnValue
-                //var p = new MethodParameterStr()
-                //{
-
-                //};
-                //parames.Add(p);
-                //writer.Write(parameter.IsOut);
-                //writer.Write(GetCecilTypeName(parameter.ParameterType));
-            }
-
-
-            UnityEngine.Debug.Log(methodClassType);
-
-            foreach (var item in injectList)
-            {
-                var classType = GetCecilTypeName(item.DeclaringType);
-                if (classType == methodClassType)
+                if (!string.IsNullOrEmpty(methodStrs))
                 {
-                    
+#if UNITY_2019_1_OR_NEWER
+                    UnityEngine.Debug.LogFormat("<color=#9400D3>class : {0}\nmethons : \n{1}</color>", type.FullName, methodStrs);
+#else
+                    UnityEngine.Debug.LogFormat("class : {0}\nmethons : \n{1}", type.FullName, methodStrs);
+#endif
                 }
             }
-            return false;
         }
-
-        public struct MethodParameterStr
+        private static bool IsHotfix(MethodDefinition method, List<MethodInfo> injectList)
         {
-
-        }
-
-        #region Dirty
-        private const string TypeNameForInjectFlag = "_puerts_injected_flag_";
-        public static bool IsDirty(AssemblyDefinition a)
-        {
-            foreach (var type in a.MainModule.Types)
+            var methodString = GetMethodString(method);
+            foreach (var item in injectList)
             {
-                if (type.Name == TypeNameForInjectFlag)
+                var itemMethodString = GetMethodString(item);
+                if (itemMethodString == methodString)
                 {
                     return true;
                 }
             }
             return false;
         }
-        public static void SetDirty(AssemblyDefinition a)
+
+#region Method String
+        private static string GetMethodString(MethodInfo method)
         {
-            a.MainModule.Types.Add(
-                new TypeDefinition("Puerts", TypeNameForInjectFlag,
-                Mono.Cecil.TypeAttributes.Class, a.MainModule.TypeSystem.Object));
+            // Type MethodName(Type parme1Name,Type parme2Name);
+            return string.Format("{0} {1}.{2}({3});",
+                GetCecilTypeName(method.ReturnType),
+                GetCecilTypeName(method.DeclaringType),
+                method.Name,
+                GetMethodParamsString(method));
         }
-        #endregion
+        private static string GetMethodParamsString(MethodInfo method)
+        {
+            // Type parme1Name,Type parme2Name
+            var result = "";
+            var parameters = method.GetParameters();
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var p = parameters[i];
+                result += string.Format("{0} {1}", GetCecilTypeName(p.ParameterType), p.Name);
+                if (i != parameters.Length - 1)
+                {
+                    result += ", ";
+                }
+            }
+            return result;
+        }
 
-        //private const string TypeNameForInjectFlag = "_puerts_injected_flag_";
-        //public static void Run()
-        //{
-        //    // 读取 Assembly-CSharp 程序集
-        //    var testAssembly = System.Reflection.Assembly.Load("Assembly-CSharp");
-        //    var assemblyFilePath = testAssembly.Location;
-        //    var a = AssemblyDefinition.ReadAssembly(assemblyFilePath);
-        //    var modified = false;
-
-        //    if (!IsDirty(a))
-        //    {
-        //        Debug.LogError("dirty dll"); // dll已执行过修复
-        //        return;
-        //    }
-
-        //    var configure = Configure.GetConfigureByTags(new List<string>{"Puerts.HotfixListAttribute"});
-        //    var hotfixTypes = configure["Puerts.HotfixListAttribute"].Select(kv => kv.Key)
-        //        .Where(o => o is Type)
-        //        .Cast<Type>()
-        //        .Where(t => !t.IsGenericTypeDefinition);
-
-        //    foreach (var type in a.MainModule.Types)
-        //    {
-        //        if (!IsHotfixType(type, hotfixTypes))
-        //        {
-        //            continue;
-        //        }
-        //        var sb = $"{type.FullName}\n";
-        //        foreach (var method in type.Methods)
-        //        {
-        //            var result = InjectMethod(a.MainModule, method);
-        //            if (!string.IsNullOrEmpty(result))
-        //            {
-        //                modified = true;
-        //                sb += result;
-        //            }
-        //        }
-        //        Debug.LogFormat("{0}", sb);
-        //    }
-
-        //    if (modified)
-        //    {
-        //        a.MainModule.Types.Add(new TypeDefinition("Puerts", TypeNameForInjectFlag, TypeAttributes.Class, a.MainModule.TypeSystem.Object));
-        //        a.Write(assemblyFilePath);
-        //        Debug.LogFormat("write: {0}", assemblyFilePath);
-        //    }
-        //    else
-        //    {
-        //        Debug.LogWarningFormat("no change");
-        //    }
-        //}
-
-
-
-        //private static string InjectMethod(ModuleDefinition module, MethodDefinition method)
-        //{
-        //    //if (method.IsConstructor || method.IsGetter || method.IsSetter || !method.IsPublic)
-        //    //    continue;
-
-
-        //    //// 定义稍后会用的类型
-        //    //var objType = module.ImportReference(typeof(System.Object));
-        //    //var intType = module.ImportReference(typeof(System.Int32));
-        //    //var logFormatMethod =
-        //    //    module.ImportReference(typeof(Debug).GetMethod("LogFormat", new[] { typeof(string), typeof(object[]) }));
-
-        //    //// 开始注入IL代码
-        //    //var insertPoint = method.Body.Instructions[0];
-        //    //var ilProcessor = method.Body.GetILProcessor();
-        //    //// 设置一些标签用于语句跳转
-        //    //var label1 = ilProcessor.Create(OpCodes.Ldarg_1);
-        //    //var label2 = ilProcessor.Create(OpCodes.Stloc_0);
-        //    //var label3 = ilProcessor.Create(OpCodes.Ldloc_0);
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Nop));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldstr, "a = {0}, b = {1}"));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_2));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Newarr, objType));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Dup));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_0));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Box, intType));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Stelem_Ref));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Dup));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldc_I4_1));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_1));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Box, intType));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Stelem_Ref));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Call, logFormatMethod));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_1));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ble, label1));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ldarg_0));
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Br, label2));
-        //    //ilProcessor.InsertBefore(insertPoint, label1);
-        //    //ilProcessor.InsertBefore(insertPoint, label2);
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Br, label3));
-        //    //ilProcessor.InsertBefore(insertPoint, label3);
-        //    //ilProcessor.InsertBefore(insertPoint, ilProcessor.Create(OpCodes.Ret));
-
-
-        //    return "";
-        //}
-
-
-        //public static string GetMethodString(MethodDefinition method)
-        //{
-        //    var sb = "";
-        //    sb += $"{method.ReturnType} ";
-        //    sb += $"{method.DeclaringType.FullName}.";
-        //    sb += $"{method.Name}(";
-        //    for (var i = 0; i < method.Parameters.Count; i++)
-        //    {
-        //        var p = method.Parameters[i];
-        //        sb += $"{p.ParameterType} {p.Name}";
-        //        if (i != method.Parameters.Count - 1)
-        //        {
-        //            sb += ", ";
-        //        }
-        //    }
-        //    sb += ");";
-
-        //    return sb;
-        //}
-
-
+        private static string GetMethodString(MethodDefinition method)
+        {
+            // Type MethodName(Type parme1Name,Type parme2Name);
+            return string.Format("{0} {1}.{2}({3});",
+                method.ReturnType.FullName,
+                method.DeclaringType.FullName,
+                method.Name,
+                GetMethodParamsString(method));
+        }
+        private static string GetMethodParamsString(MethodDefinition method)
+        {
+            // Type parme1Name,Type parme2Name
+            var result = "";
+            if (method.HasParameters)
+            {
+                for (var i = 0; i < method.Parameters.Count; i++)
+                {
+                    var p = method.Parameters[i];
+                    result += string.Format("{0} {1}", p.ParameterType.FullName, p.Name);
+                    if (i != method.Parameters.Count - 1)
+                    {
+                        result += ", ";
+                    }
+                }
+            }
+            return result;
+        }
 
         /// <summary> cecil里的类名表示和.net标准并不一样，这里做些转换 </summary>
-        static string GetCecilTypeName(Type type)
+        private static string GetCecilTypeName(Type type)
         {
             if (type.IsByRef && type.GetElementType().IsGenericType)
             {
@@ -289,30 +173,169 @@ namespace Puerts
                 return type.FullName.Replace('+', '/');
             }
         }
-        /// <summary> 
-        /// 把方法签名写入文件
-        /// 由于目前不支持泛型函数的patch，所以函数签名为方法名+参数类型 
-        /// </summary>
-        static void GetMethods(List<MethodInfo> methods)
+#endregion
+
+#region Inject Method
+
+#region IL **
+        /*  // 注入的IL的伪代码
+            public class FooBar
+            {
+                public void Foo(string params1, int params2, Action params3)
+                {
+                    if(LuaPatch.HasPatch(className, methodName, methodParamsStr))
+                    {
+                        LuaPatch.CallPatch(className, methodName, methodParamsStr, params1, params2, params3);
+                        return;
+                    }
+                    // the old code here
+                    Debug.Log("这里是原来的逻辑代码, 无返回值");
+                }
+                public Vector2 Bar(string params1, int params2, Action params3)
+                {
+                    if (LuaPatch.HasPatch(className, methodName, methodParamsStr))
+                    {
+                        return (Vector2)LuaPatch.CallPatch(className, methodName, methodParamsStr, params1, params2, params3);
+                    }
+                    // the old code here
+                    Debug.Log("这里是原来的逻辑代码, 有返回值");
+                    return Vector2.one;
+                }
+            }
+        */
+#endregion
+
+        /// <summary> 开始注入方法 </summary>
+        private static string DoInjectMethod(AssemblyDefinition assembly, MethodDefinition method, TypeDefinition type)
         {
-            //var methodGroups = methods.GroupBy(m => m.DeclaringType).ToList();
-            //writer.Write(methodGroups.Count);
-            //foreach (var methodGroup in methodGroups)
-            //{
-            //    writer.Write(GetCecilTypeName(methodGroup.Key));
-            //    writer.Write(methodGroup.Count());
-            //    foreach (var method in methodGroup)
-            //    {
-            //        writer.Write(method.Name);
-            //        writer.Write(GetCecilTypeName(method.ReturnType));
-            //        writer.Write(method.GetParameters().Length);
-            //        foreach (var parameter in method.GetParameters())
-            //        {
-            //            writer.Write(parameter.IsOut);
-            //            writer.Write(GetCecilTypeName(parameter.ParameterType));
-            //        }
-            //    }
-            //}
+            if (method.Name.Equals(".ctor") || !method.HasBody) return "";
+
+            var firstIns = method.Body.Instructions.First();
+            var worker = method.Body.GetILProcessor();
+
+            var methodParamsStr = GetMethodParamsString(method);
+
+            // 不同重载可以通过 methodParamsStr 区分
+            // bool result = LuaPatch.HasPatch(type.FullName, method.Name, methodParamsStr);
+            var hasPatchRef = assembly.MainModule.ImportReference(typeof(Hotfix).GetMethod("HasPatch"));
+            var current = InsertBefore(worker, firstIns, worker.Create(OpCodes.Ldstr, type.FullName));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, method.Name));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Call, hasPatchRef));
+
+            // if(result == false) jump to the under code
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Brfalse, firstIns));
+
+            // else LuaPatch.CallPatch(type.FullName, method.Name, methodParamsStr, args)
+            var callPatchMethod = typeof(Hotfix).GetMethod("CallPatch");
+            var callPatchRef = assembly.MainModule.ImportReference(callPatchMethod);
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, type.FullName));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, method.Name));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
+            var paramsCount = method.Parameters.Count;
+            // 创建 args参数 object[] 集合
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldc_I4, paramsCount));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Newarr, assembly.MainModule.ImportReference(typeof(object))));
+            for (int index = 0; index < paramsCount; index++)
+            {
+                var argIndex = method.IsStatic ? index : index + 1;
+                // 压入参数
+                current = InsertAfter(worker, current, worker.Create(OpCodes.Dup));
+                current = InsertAfter(worker, current, worker.Create(OpCodes.Ldc_I4, index));
+                var paramType = method.Parameters[index].ParameterType;
+                // 获取参数类型定义, 用来区分是否枚举类 [若你所使用的类型不在本assembly, 则此处需要遍历其他assembly以取得TypeDefinition]
+                var paramTypeDef = assembly.MainModule.GetType(paramType.FullName);
+                // 这里很重要, 需要判断出 值类型数据(不包括枚举) 是不需要拆箱的
+                if (paramType.IsValueType && (paramTypeDef == null || !paramTypeDef.IsEnum))
+                {
+                    current = InsertAfter(worker, current, worker.Create(OpCodes.Ldarg, argIndex));
+                }
+                else
+                {
+                    current = InsertAfter(worker, current, worker.Create(OpCodes.Ldarg, argIndex));
+                    current = InsertAfter(worker, current, worker.Create(OpCodes.Box, paramType));
+                }
+                current = InsertAfter(worker, current, worker.Create(OpCodes.Stelem_Ref));
+            }
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Call, callPatchRef));
+            var methodReturnVoid = method.ReturnType.FullName.Equals("System.Void");
+            var patchCallReturnVoid = callPatchMethod.ReturnType.FullName.Equals("System.Void");
+            // LuaPatch.CallPatch()有返回值时
+            if (!patchCallReturnVoid)
+            {
+                // 方法无返回值, 则需先Pop出栈区中CallPatch()返回的结果
+                if (methodReturnVoid) current = InsertAfter(worker, current, worker.Create(OpCodes.Pop));
+                // 方法有返回值时, 返回值进行拆箱
+                else current = InsertAfter(worker, current, worker.Create(OpCodes.Unbox_Any, method.ReturnType));
+            }
+            // return
+            InsertAfter(worker, current, worker.Create(OpCodes.Ret));
+
+            // 重新计算语句位置偏移值
+            ComputeOffsets(method.Body);
+
+            return GetMethodString(method);
         }
+
+        /// <summary>
+        /// 语句前插入Instruction, 并返回当前语句
+        /// </summary>
+        private static Instruction InsertBefore(ILProcessor worker, Instruction target, Instruction instruction)
+        {
+            worker.InsertBefore(target, instruction);
+            return instruction;
+        }
+        /// <summary>
+        /// 语句后插入Instruction, 并返回当前语句
+        /// </summary>
+        private static Instruction InsertAfter(ILProcessor worker, Instruction target, Instruction instruction)
+        {
+            worker.InsertAfter(target, instruction);
+            return instruction;
+        }
+        private static void ComputeOffsets(Mono.Cecil.Cil.MethodBody body)
+        {
+            var offset = 0;
+            foreach (var instruction in body.Instructions)
+            {
+                instruction.Offset = offset;
+                offset += instruction.GetSize();
+            }
+        }
+#endregion
+
+#region Dirty
+        private const string TypeNameForInjectFlag = "_puerts_injected_flag_";
+        public static bool IsDirty(AssemblyDefinition a)
+        {
+            foreach (var type in a.MainModule.Types)
+            {
+                if (type.Name == TypeNameForInjectFlag)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        public static void SetDirty(AssemblyDefinition a)
+        {
+            a.MainModule.Types.Add(
+                new TypeDefinition("Puerts", TypeNameForInjectFlag,
+                Mono.Cecil.TypeAttributes.Class, a.MainModule.TypeSystem.Object));
+        }
+#endregion
+
+#region Temp
+        /// <summary> 创建dll缓存 </summary>
+        private static void CreateTempFile(string assmeblyPath)
+        {
+            string tmpPath = Path.Combine(Path.GetDirectoryName(assmeblyPath), "assmebly_backups", Path.GetFileName(assmeblyPath));
+            var temDir = Path.GetDirectoryName(tmpPath);
+            if (!Directory.Exists(temDir))
+                Directory.CreateDirectory(temDir);
+            try { File.Copy(assmeblyPath, tmpPath, true); }
+            catch { }
+        } 
+#endregion
     }
 }

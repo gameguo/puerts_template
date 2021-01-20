@@ -19,7 +19,7 @@ public static class UnityEditorUtility
         }
         // 重新编译 即clear
 #if UNITY_2019_3_OR_NEWER
-            UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+        UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
 #elif UNITY_2017_1_OR_NEWER
         // UnityEditor.Scripting.ScriptCompilation.EditorCompilationInterface.DirtyAllScripts();
         var editorAssembly = Assembly.GetAssembly(typeof(UnityEditor.Editor));
@@ -29,5 +29,6 @@ public static class UnityEditorUtility
 #else
         UnityEngine.Debug.LogWarning("Need -- Unity 2017.1 OR NEWER");
 #endif
+        UnityEngine.Debug.Log("Compiling Success");
     }
 }
