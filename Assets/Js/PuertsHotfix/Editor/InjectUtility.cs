@@ -48,12 +48,73 @@ namespace Puerts
             }
             UnityEngine.Debug.Log(Path.GetFileName(assmeblyPath) + " inject success");
         }
-
         /// <summary> 注入 </summary>
         private static void Inject(AssemblyDefinition assembly, List<MethodInfo> injectList)
         {
             var module = assembly.MainModule;
-            
+
+            UnityEngine.Debug.Log(injectList.Count);
+
+            foreach (var type in module.Types)
+            {
+                var sb = $"{type.FullName}\n";
+                foreach (var method in type.Methods)
+                {
+                    if (!IsHotfix(method, injectList)) continue;
+
+                    var result = InjectMethod(module, method);
+                    if (!string.IsNullOrEmpty(result))
+                    {
+                        sb += result + "\n";
+                    }
+                }
+                UnityEngine.Debug.LogFormat("{0}", sb);
+            }
+        }
+
+        private static string InjectMethod(ModuleDefinition module, MethodDefinition mothod)
+        {
+
+            return "";
+        }
+
+        private static bool IsHotfix(MethodDefinition method, List<MethodInfo> injectList)
+        {
+            var methodClassType = method.DeclaringType.FullName;
+            var methodName = method.Name;
+            var methodReturnType = method.ReturnType.FullName;
+            int methodParameterCount = method.HasParameters ? method.Parameters.Count : 0;
+            var parames = new List<MethodParameterStr>();
+
+            foreach (var parameter in method.Parameters)
+            {
+                //parameter.IsReturnValue
+                //var p = new MethodParameterStr()
+                //{
+
+                //};
+                //parames.Add(p);
+                //writer.Write(parameter.IsOut);
+                //writer.Write(GetCecilTypeName(parameter.ParameterType));
+            }
+
+
+            UnityEngine.Debug.Log(methodClassType);
+
+            foreach (var item in injectList)
+            {
+                var classType = GetCecilTypeName(item.DeclaringType);
+                if (classType == methodClassType)
+                {
+                    
+                }
+            }
+            return false;
+        }
+
+        public struct MethodParameterStr
+        {
+
         }
 
         #region Dirty

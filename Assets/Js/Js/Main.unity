@@ -339,7 +339,7 @@ MonoBehaviour:
   canvas: {fileID: 553822119}
   jsPath: Js\build
   jsName: main
-  isDebug: 1
+  isDebug: 0
 --- !u!114 &1058603562
 MonoBehaviour:
   m_ObjectHideFlags: 0
