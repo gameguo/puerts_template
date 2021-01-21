@@ -5,6 +5,13 @@ using System.Collections.Generic;
 [Configure]
 public class PuertsHotfixCfg
 {
+    // 获取类型的配置
+    [HotfixConfig]
+    static HotfixConfig GetHotfixConfig(Type type)
+    {
+        return HotfixConfig.GetDefault();
+    }
+
     [HotfixList]
     static IEnumerable<Type> Hotfixs
     {

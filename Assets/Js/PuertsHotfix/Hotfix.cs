@@ -2,12 +2,10 @@
 {
     public class Hotfix
     {
-
-
         public static bool HasPatch(string className, string methodName, string methodParams)
         {
 #if UNITY_EDITOR
-            // UnityEngine.Debug.Log(string.Format("HasPatch: {0}:{1}({2})", className, methodName, methodParams));
+            UnityEngine.Debug.Log(string.Format("HasPatch: {0}:{1}({2})", className, methodName, methodParams));
 #endif
 
             // TODO 此处函数存在判断

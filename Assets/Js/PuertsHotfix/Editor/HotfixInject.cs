@@ -8,18 +8,20 @@ using System.Reflection;
 
 namespace Puerts
 {
-    public static class InjectUtility
+    public static class HotfixInject
     {
+        #region StartInject
         /// <summary> 开始注入 </summary>
-        public static void StartInject(string assmeblyPath, List<MethodInfo> injectList)
+        public static void StartInject(string assmeblyPath, List<string> injectList)
         {
+            assmeblyPath = Path.GetFullPath(assmeblyPath);
             AssemblyDefinition assembly = null;
             try
             {
                 assembly = AssemblyDefinition.ReadAssembly(assmeblyPath,
                     new ReaderParameters { ReadSymbols = true, ReadWrite = true });
 
-                CreateTempFile(assmeblyPath);
+                // CreateTempFile(assmeblyPath);
 
                 if (IsDirty(assembly))
                 {
@@ -27,10 +29,18 @@ namespace Puerts
                     return;
                 }
 
-                Inject(assembly, injectList); // 注入
-
                 SetDirty(assembly);
-                assembly.Write(new WriterParameters{ WriteSymbols = true });
+
+                foreach (var type in assembly.MainModule.Types)
+                {
+                    var methodStrs = InjectType(assembly, type, injectList); // 注入
+                    if (!string.IsNullOrEmpty(methodStrs))
+                    {
+                        UnityEngine.Debug.Log(methodStrs);
+                    }
+                }
+
+                assembly.Write(new WriterParameters { WriteSymbols = true });
             }
             catch (Exception e)
             {
@@ -50,41 +60,38 @@ namespace Puerts
                 }
             }
             UnityEngine.Debug.Log(Path.GetFileName(assmeblyPath) + " inject success");
+            UnityEditor.AssetDatabase.Refresh();
         }
-        /// <summary> 注入 </summary>
-        private static void Inject(AssemblyDefinition assembly, List<MethodInfo> injectList)
+        /// <summary> 注入Type </summary>
+        private static string InjectType(AssemblyDefinition assembly, TypeDefinition type, List<string> injectList)
         {
-            var module = assembly.MainModule;
-
-            foreach (var type in module.Types)
+            var methodStrs = "";
+            foreach (var nestedTypes in type.NestedTypes)
             {
-                var methodStrs = "";
-                foreach (var method in type.Methods)
+                methodStrs += InjectType(assembly, nestedTypes, injectList);
+            }
+            foreach (var method in type.Methods)
+            {
+                if (!IsHotfix(method, injectList)) continue;
+                var result = DoInjectMethod(assembly, method);
+                if (!string.IsNullOrEmpty(result))
                 {
-                    if (!IsHotfix(method, injectList)) continue;
-
-                    var result = DoInjectMethod(assembly, method, type);
-                    if (!string.IsNullOrEmpty(result))
-                    {
-                        methodStrs += result + "\n";
-                    }
-                }
-                if (!string.IsNullOrEmpty(methodStrs))
-                {
-#if UNITY_2019_1_OR_NEWER
-                    UnityEngine.Debug.LogFormat("<color=#9400D3>class : {0}\nmethons : \n{1}</color>", type.FullName, methodStrs);
-#else
-                    UnityEngine.Debug.LogFormat("class : {0}\nmethons : \n{1}", type.FullName, methodStrs);
-#endif
+                    methodStrs += result + "\n";
                 }
             }
+            return string.IsNullOrEmpty(methodStrs) ? "" : string.Format("class : {0}\nmethons : \n{1}\n", type.FullName, methodStrs);
         }
-        private static bool IsHotfix(MethodDefinition method, List<MethodInfo> injectList)
+        #endregion
+
+        #region Tools
+
+        #region IsHotfix
+        private static bool IsHotfix(MethodDefinition method, List<string> injectList)
         {
             var methodString = GetMethodString(method);
             foreach (var item in injectList)
             {
-                var itemMethodString = GetMethodString(item);
+                var itemMethodString = item;
                 if (itemMethodString == methodString)
                 {
                     return true;
@@ -92,8 +99,9 @@ namespace Puerts
             }
             return false;
         }
+        #endregion
 
-#region Method String
+        #region Method String
         private static string GetMethodString(MethodInfo method)
         {
             // Type MethodName(Type parme1Name,Type parme2Name);
@@ -173,11 +181,40 @@ namespace Puerts
                 return type.FullName.Replace('+', '/');
             }
         }
-#endregion
+        #endregion
 
-#region Inject Method
+        #region Dirty
+        private const string TypeNameForInjectFlag = "__PUERTS_INJECT_FLAG";
+        public static bool IsDirty(AssemblyDefinition a)
+        {
+            return a.MainModule.Types.Any(t => t.Name == TypeNameForInjectFlag);
+        }
+        public static void SetDirty(AssemblyDefinition a)
+        {
+            a.MainModule.Types.Add(
+                new TypeDefinition("__PUERTS_GEN", TypeNameForInjectFlag,
+                Mono.Cecil.TypeAttributes.Class, a.MainModule.TypeSystem.Object));
+        }
+        #endregion
 
-#region IL **
+        #region Temp
+        /// <summary> 创建dll缓存 </summary>
+        private static void CreateTempFile(string assmeblyPath)
+        {
+            string tmpPath = Path.Combine(Path.GetDirectoryName(assmeblyPath), "assmebly_backups", Path.GetFileName(assmeblyPath));
+            var temDir = Path.GetDirectoryName(tmpPath);
+            if (!Directory.Exists(temDir))
+                Directory.CreateDirectory(temDir);
+            try { File.Copy(assmeblyPath, tmpPath, true); }
+            catch { }
+        }
+        #endregion 
+
+        #endregion
+
+        #region Inject Method
+
+        #region IL **
         /*  // 注入的IL的伪代码
             public class FooBar
             {
@@ -203,12 +240,26 @@ namespace Puerts
                 }
             }
         */
-#endregion
+        #endregion
 
         /// <summary> 开始注入方法 </summary>
-        private static string DoInjectMethod(AssemblyDefinition assembly, MethodDefinition method, TypeDefinition type)
+        private static string DoInjectMethod(AssemblyDefinition assembly, MethodDefinition method)
         {
-            if (method.Name.Equals(".ctor") || !method.HasBody) return "";
+            if (method.Name.Equals(".ctor") || 
+                method.Name == ".cctor" || 
+                method.IsAbstract || method.IsPInvokeImpl || 
+                method.Name.Contains("<") || !method.HasBody) return "";
+            if (IsGeneric(method)) 
+            {
+                UnityEngine.Debug.LogWarningFormat("jump Generic Method : {0}.{1}", method.DeclaringType.FullName, method.FullName);
+                return ""; 
+            }
+            InjectMethod(assembly, method);
+            return GetMethodString(method);
+        }
+        private static void InjectMethod(AssemblyDefinition assembly, MethodDefinition method)
+        {
+            var type = method.DeclaringType;
 
             var firstIns = method.Body.Instructions.First();
             var worker = method.Body.GetILProcessor();
@@ -273,21 +324,14 @@ namespace Puerts
 
             // 重新计算语句位置偏移值
             ComputeOffsets(method.Body);
-
-            return GetMethodString(method);
         }
-
-        /// <summary>
-        /// 语句前插入Instruction, 并返回当前语句
-        /// </summary>
+        /// <summary> 语句前插入Instruction, 并返回当前语句 </summary>
         private static Instruction InsertBefore(ILProcessor worker, Instruction target, Instruction instruction)
         {
             worker.InsertBefore(target, instruction);
             return instruction;
         }
-        /// <summary>
-        /// 语句后插入Instruction, 并返回当前语句
-        /// </summary>
+        /// <summary> 语句后插入Instruction, 并返回当前语句 </summary>
         private static Instruction InsertAfter(ILProcessor worker, Instruction target, Instruction instruction)
         {
             worker.InsertAfter(target, instruction);
@@ -302,40 +346,117 @@ namespace Puerts
                 offset += instruction.GetSize();
             }
         }
-#endregion
-
-#region Dirty
-        private const string TypeNameForInjectFlag = "_puerts_injected_flag_";
-        public static bool IsDirty(AssemblyDefinition a)
+        #region generic
+        private static bool IsGeneric(MethodDefinition method)
         {
-            foreach (var type in a.MainModule.Types)
+            return method.HasGenericParameters || genericInOut(method);
+        }
+        private static bool genericInOut(MethodDefinition method)
+        {
+            if (hasGenericParameter(method.ReturnType) || isNoPublic(method.ReturnType))
             {
-                if (type.Name == TypeNameForInjectFlag)
+                return true;
+            }
+            var parameters = method.Parameters;
+
+            if (!method.IsStatic
+                && (hasGenericParameter(method.DeclaringType) || (method.DeclaringType.IsValueType && isNoPublic(method.DeclaringType))))
+            {
+                return true;
+            }
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                if (hasGenericParameter(parameters[i].ParameterType) ||
+                    ((parameters[i].ParameterType.IsValueType ||
+                    parameters[i].ParameterType.IsByReference ||
+                    parameters[i].CustomAttributes.Any
+                    (ca => ca.AttributeType.FullName == "System.ParamArrayAttribute")) && isNoPublic(parameters[i].ParameterType)))
                 {
                     return true;
                 }
             }
             return false;
         }
-        public static void SetDirty(AssemblyDefinition a)
+        private static bool hasGenericParameter(TypeReference type)
         {
-            a.MainModule.Types.Add(
-                new TypeDefinition("Puerts", TypeNameForInjectFlag,
-                Mono.Cecil.TypeAttributes.Class, a.MainModule.TypeSystem.Object));
+            if (type.HasGenericParameters)
+            {
+                return true;
+            }
+            if (type.IsByReference)
+            {
+                return hasGenericParameter(((ByReferenceType)type).ElementType);
+            }
+            if (type.IsArray)
+            {
+                return hasGenericParameter(((ArrayType)type).ElementType);
+            }
+            if (type.IsGenericInstance)
+            {
+                foreach (var typeArg in ((GenericInstanceType)type).GenericArguments)
+                {
+                    if (hasGenericParameter(typeArg))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            return type.IsGenericParameter;
         }
-#endregion
-
-#region Temp
-        /// <summary> 创建dll缓存 </summary>
-        private static void CreateTempFile(string assmeblyPath)
+        static bool isNoPublic(TypeReference type)
         {
-            string tmpPath = Path.Combine(Path.GetDirectoryName(assmeblyPath), "assmebly_backups", Path.GetFileName(assmeblyPath));
-            var temDir = Path.GetDirectoryName(tmpPath);
-            if (!Directory.Exists(temDir))
-                Directory.CreateDirectory(temDir);
-            try { File.Copy(assmeblyPath, tmpPath, true); }
-            catch { }
+            if (type.IsByReference)
+            {
+                return isNoPublic(((ByReferenceType)type).ElementType);
+            }
+            if (type.IsArray)
+            {
+                return isNoPublic(((ArrayType)type).ElementType);
+            }
+            else
+            {
+                if (type.IsGenericInstance)
+                {
+                    foreach (var typeArg in ((GenericInstanceType)type).GenericArguments)
+                    {
+                        if (isNoPublic(typeArg))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                var resolveType = type.Resolve();
+                if ((!type.IsNested && !resolveType.IsPublic) || (type.IsNested && !resolveType.IsNestedPublic))
+                {
+                    return true;
+                }
+                if (type.IsNested)
+                {
+                    var parent = type.DeclaringType;
+                    while (parent != null)
+                    {
+                        var resolveParent = parent.Resolve();
+                        if ((!parent.IsNested && !resolveParent.IsPublic) || (parent.IsNested && !resolveParent.IsNestedPublic))
+                        {
+                            return true;
+                        }
+                        if (parent.IsNested)
+                        {
+                            parent = parent.DeclaringType;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                return false;
+            }
+
         } 
-#endregion
+        #endregion
+        #endregion
     }
 }

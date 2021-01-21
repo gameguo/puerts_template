@@ -11,8 +11,13 @@ namespace PuertsTest
             NoHotfixTest();
         }
 
+
         private void HotfixTest()
         {
+
+
+            Debug.Log("C#的方法 :: HotfixTest1111111");
+
             Debug.Log("C#的方法 :: HotfixTest");
         }
         private void HotfixTest(int hotfixTest2)

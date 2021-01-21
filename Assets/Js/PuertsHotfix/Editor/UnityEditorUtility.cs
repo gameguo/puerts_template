@@ -12,7 +12,8 @@ public static class UnityEditorUtility
     /// <summary> 重新编译脚本 </summary>
     public static void Compilation()
     {
-        if (EditorApplication.isCompiling || UnityEngine.Application.isPlaying)
+        if (UnityEngine.Application.isPlaying) return;
+        if (EditorApplication.isCompiling)
         {
             UnityEngine.Debug.LogWarning("Compiling...");
             return;
@@ -30,5 +31,6 @@ public static class UnityEditorUtility
         UnityEngine.Debug.LogWarning("Need -- Unity 2017.1 OR NEWER");
 #endif
         UnityEngine.Debug.Log("Compiling Success");
+        AssetDatabase.Refresh();
     }
 }
