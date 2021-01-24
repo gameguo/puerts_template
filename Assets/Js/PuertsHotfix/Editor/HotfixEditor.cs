@@ -83,8 +83,6 @@ namespace Puerts
         private static bool IsHotfix(MethodInfo method, List<MethodInfo> filters, HotfixConfig config)
         {
             if (config.ignoreNotPublic && method.IsPublic) return false;
-            if (config.ignoreProperty && method.IsSpecialName &&
-                (method.Name.StartsWith("get_") || method.Name.StartsWith("set_"))) return false;
             if (method.IsAbstract) return false;
             if (filters == null || filters.Count == 0) return true;
             foreach (var filter in filters)

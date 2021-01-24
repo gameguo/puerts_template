@@ -14,14 +14,14 @@ namespace Puerts
 
     public struct HotfixConfig
     {
-        /// <summary> 是否忽略属性 get set </summary>
-        public bool ignoreProperty;
+        ///// <summary> 是否忽略属性 get set </summary>
+        //public bool ignoreProperty;
         /// <summary> 是否忽略非public方法 </summary>
         public bool ignoreNotPublic;
 
         public static HotfixConfig GetDefault()
         {
-            return new HotfixConfig { ignoreProperty = true, ignoreNotPublic = false };
+            return new HotfixConfig { ignoreNotPublic = false };
         }
     }
 }

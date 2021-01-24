@@ -19,9 +19,9 @@ namespace Puerts
             try
             {
                 assembly = AssemblyDefinition.ReadAssembly(assmeblyPath,
-                    new ReaderParameters { ReadSymbols = true, ReadWrite = true });
+                    new ReaderParameters { ReadSymbols = true, ReadWrite = true, });
 
-                // CreateTempFile(assmeblyPath);
+                CreateTempFile(assmeblyPath);
 
                 if (IsDirty(assembly))
                 {
@@ -33,7 +33,7 @@ namespace Puerts
 
                 foreach (var type in assembly.MainModule.Types)
                 {
-                    var methodStrs = InjectType(assembly, type, injectList); // 注入
+                    var methodStrs = InjectType(assembly.MainModule, type, injectList); // 注入
                     if (!string.IsNullOrEmpty(methodStrs))
                     {
                         UnityEngine.Debug.Log(methodStrs);
@@ -44,7 +44,7 @@ namespace Puerts
             }
             catch (Exception e)
             {
-                UnityEngine.Debug.LogError("Inject Exception:\r\n" + e);
+                UnityEngine.Debug.LogError("inject exception:\r\n" + e);
                 return;
             }
             finally
@@ -63,17 +63,17 @@ namespace Puerts
             UnityEditor.AssetDatabase.Refresh();
         }
         /// <summary> 注入Type </summary>
-        private static string InjectType(AssemblyDefinition assembly, TypeDefinition type, List<string> injectList)
+        private static string InjectType(ModuleDefinition module, TypeDefinition type, List<string> injectList)
         {
             var methodStrs = "";
             foreach (var nestedTypes in type.NestedTypes)
             {
-                methodStrs += InjectType(assembly, nestedTypes, injectList);
+                methodStrs += InjectType(module, nestedTypes, injectList);
             }
             foreach (var method in type.Methods)
             {
                 if (!IsHotfix(method, injectList)) continue;
-                var result = DoInjectMethod(assembly, method);
+                var result = DoInjectMethod(module, method);
                 if (!string.IsNullOrEmpty(result))
                 {
                     methodStrs += result + "\n";
@@ -201,7 +201,7 @@ namespace Puerts
         /// <summary> 创建dll缓存 </summary>
         private static void CreateTempFile(string assmeblyPath)
         {
-            string tmpPath = Path.Combine(Path.GetDirectoryName(assmeblyPath), "assmebly_backups", Path.GetFileName(assmeblyPath));
+            string tmpPath = Path.Combine("./Temp/", "assmebly_backups", Path.GetFileName(assmeblyPath));
             var temDir = Path.GetDirectoryName(tmpPath);
             if (!Directory.Exists(temDir))
                 Directory.CreateDirectory(temDir);
@@ -243,50 +243,56 @@ namespace Puerts
         #endregion
 
         /// <summary> 开始注入方法 </summary>
-        private static string DoInjectMethod(AssemblyDefinition assembly, MethodDefinition method)
+        private static string DoInjectMethod(ModuleDefinition module, MethodDefinition method)
         {
             if (method.Name.Equals(".ctor") || 
                 method.Name == ".cctor" || 
                 method.IsAbstract || method.IsPInvokeImpl || 
+                method.IsGetter || method.IsSetter ||
                 method.Name.Contains("<") || !method.HasBody) return "";
-            if (IsGeneric(method)) 
+            if (IsGeneric(method))
             {
                 UnityEngine.Debug.LogWarningFormat("jump Generic Method : {0}.{1}", method.DeclaringType.FullName, method.FullName);
                 return ""; 
             }
-            InjectMethod(assembly, method);
+            InjectMethod(module, method);
             return GetMethodString(method);
         }
-        private static void InjectMethod(AssemblyDefinition assembly, MethodDefinition method)
+        private static void InjectMethod(ModuleDefinition module, MethodDefinition method)
         {
+            var hotfixType = module.Types.Single(t => t.FullName == "Puerts.Hotfix");
+            var hasPatchRef = module.ImportReference(hotfixType.Methods.Single(m=>m.Name == "HasPatch"));
+            var callPatchMethod = module.ImportReference(hotfixType.Methods.Single(m => m.Name == "CallPatch"));
+
+
+            // 使用此方法importReference会导致Unity代码无法重新编译
+            // var hasPatchRef = module.ImportReference(typeof(Hotfix).GetMethod("HasPatch"));
+            // var callPatchMethod = typeof(Hotfix).GetMethod("CallPatch");
+
+
             var type = method.DeclaringType;
+            var methodName = string.Format("{0}.{1}", type.FullName, method.Name);
+            // var methodParamsStr = GetMethodParamsString(method);
 
             var firstIns = method.Body.Instructions.First();
             var worker = method.Body.GetILProcessor();
 
-            var methodParamsStr = GetMethodParamsString(method);
-
-            // 不同重载可以通过 methodParamsStr 区分
             // bool result = LuaPatch.HasPatch(type.FullName, method.Name, methodParamsStr);
-            var hasPatchRef = assembly.MainModule.ImportReference(typeof(Hotfix).GetMethod("HasPatch"));
-            var current = InsertBefore(worker, firstIns, worker.Create(OpCodes.Ldstr, type.FullName));
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, method.Name));
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
+            var current = InsertBefore(worker, firstIns, worker.Create(OpCodes.Ldstr, methodName));
+            // current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
             current = InsertAfter(worker, current, worker.Create(OpCodes.Call, hasPatchRef));
 
             // if(result == false) jump to the under code
             current = InsertAfter(worker, current, worker.Create(OpCodes.Brfalse, firstIns));
 
             // else LuaPatch.CallPatch(type.FullName, method.Name, methodParamsStr, args)
-            var callPatchMethod = typeof(Hotfix).GetMethod("CallPatch");
-            var callPatchRef = assembly.MainModule.ImportReference(callPatchMethod);
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, type.FullName));
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, method.Name));
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
+            var callPatchRef = module.ImportReference(callPatchMethod);
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodName));
+            // current = InsertAfter(worker, current, worker.Create(OpCodes.Ldstr, methodParamsStr));
             var paramsCount = method.Parameters.Count;
             // 创建 args参数 object[] 集合
             current = InsertAfter(worker, current, worker.Create(OpCodes.Ldc_I4, paramsCount));
-            current = InsertAfter(worker, current, worker.Create(OpCodes.Newarr, assembly.MainModule.ImportReference(typeof(object))));
+            current = InsertAfter(worker, current, worker.Create(OpCodes.Newarr, module.ImportReference(typeof(object))));
             for (int index = 0; index < paramsCount; index++)
             {
                 var argIndex = method.IsStatic ? index : index + 1;
@@ -295,7 +301,7 @@ namespace Puerts
                 current = InsertAfter(worker, current, worker.Create(OpCodes.Ldc_I4, index));
                 var paramType = method.Parameters[index].ParameterType;
                 // 获取参数类型定义, 用来区分是否枚举类 [若你所使用的类型不在本assembly, 则此处需要遍历其他assembly以取得TypeDefinition]
-                var paramTypeDef = assembly.MainModule.GetType(paramType.FullName);
+                var paramTypeDef = module.GetType(paramType.FullName);
                 // 这里很重要, 需要判断出 值类型数据(不包括枚举) 是不需要拆箱的
                 if (paramType.IsValueType && (paramTypeDef == null || !paramTypeDef.IsEnum))
                 {
